@@ -1,0 +1,12 @@
+[Unit]
+Description=Digital Signage Service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi/signage
+ExecStart=/usr/bin/python3 main.py
+
+[Install]
+WantedBy=multi-user.target
+

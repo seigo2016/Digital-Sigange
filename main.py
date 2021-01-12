@@ -17,7 +17,6 @@ from google.auth.transport.requests import Request
 from googleapiclient.http import MediaIoBaseDownload
 import nest_asyncio
 import base64
-import PyPDF2
 import shutil
 
 nest_asyncio.apply()
@@ -42,7 +41,6 @@ class CustomNamespace(socketio.AsyncNamespace):
         while True:
             index = index % len(pdf_slide)
             await self.on_broadcast_message(pdf_slide[index])
-            print("Send Message")
             index += 1
             await asyncio.sleep(30)
 
