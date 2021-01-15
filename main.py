@@ -42,7 +42,7 @@ class CustomNamespace(socketio.AsyncNamespace):
             index = index % len(pdf_slide)
             await self.on_broadcast_message(pdf_slide[index])
             index += 1
-            await asyncio.sleep(30)
+            await asyncio.sleep(60)
 
 
 async def download_pdf(app_folder_info, service):

@@ -11,8 +11,8 @@
   <script>
     function renderPage(pdfDoc){
       pdfDoc.getPage(1).then(function(page){
-        let viewport = page.getViewport({scale: 1});
         let canvas = document.getElementById('canvas');
+	      let viewport = page.getViewport({ scale : (1080 / page.view[2]), });
         let context = canvas.getContext('2d');
         canvas.height = viewport.height;
         canvas.width = viewport.width;

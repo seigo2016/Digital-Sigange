@@ -1,5 +1,6 @@
 *.pickle
 *.json
+*.old
 tmp/
 .vscode/
 signage/
