@@ -1,5 +1,7 @@
 [Unit]
 Description=Digital Signage Service
+Wants=network-online.target
+After=network-online.target
 
 [Service]
 Type=simple
@@ -8,4 +10,3 @@ ExecStart=python3 ./main.py
 WorkingDirectory=/home/pi/Digital-Signage
 [Install]
 WantedBy=multi-user.target
-

@@ -9,6 +9,9 @@
     <canvas id="canvas"></canvas>
   </body>
   <script>
+    let start = new Date();
+    let end;
+    let loadingTask;
     function renderPage(pdfDoc){
       pdfDoc.getPage(1).then(function(page){
         let canvas = document.getElementById('canvas');
@@ -22,23 +25,32 @@
         };
         let renderTask = page.render(renderContext);
         renderTask.promise.then(function(){
-          console.log('page rendered')
+	  end = new Date();
+          console.log('page rendered'+(end.getTime()-start.getTime()));
+	  start = new Date();
+	  
         })
       })
     }
     let pdfjsLib = window["pdfjs-dist/build/pdf"];
     pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.6.347/pdf.worker.min.js';
-    
+
+    //pdfjsLib.GlobalWorkerOptions.workerSrc = false;
+
+//    pdfjsLib.disableWorker = false;
     let socket = io();
     socket.on('connect', function(){
         console.log("connect")
     });
     socket.on('event', function(data){
       data=atob(data);
-      let loadingTask = pdfjsLib.getDocument({data: data});
+      if(loadingTask){
+        loadingTask.destroy();
+      }
+      loadingTask = pdfjsLib.getDocument({data: data});
       loadingTask.promise.then(function(pdf){
         renderPage(pdf);
-      })
+      });
     });
     socket.on('disconnect', function(){
         console.log("disconnect")

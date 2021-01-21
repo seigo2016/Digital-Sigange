@@ -24,25 +24,34 @@ routes = web.RouteTableDef()
 
 pdf_slide = []
 
+connected_client = 0
 class CustomNamespace(socketio.AsyncNamespace):
-
     async def on_connect(self, sid, environ):
+        global connected_client
+        connected_client += 1
         print('[{}] connet sid : {}'.format(datetime.now().strftime('%Y-%m-%d %H:%M:%S') , sid))
-        self.task = asyncio.ensure_future(self.on_connecnting())
+        if connected_client == 1:
+            self.task = asyncio.ensure_future(self.on_connecnting())
+        else:
+            self.index = self.index % len(pdf_slide)
+            await self.emit('event', pdf_slide[self.index].decode(), room=sid)
 
     async def on_broadcast_message(self, msg):
         await self.emit('event', msg.decode())
 
     async def on_disconnect(self, sid):
-        self.task.cancel()
+        global connected_client
+        connected_client -= 1
+        if not connected_client:
+          self.task.cancel()
 
     async def on_connecnting(self):
-        index=0
+        self.index=0
         while True:
-            index = index % len(pdf_slide)
-            await self.on_broadcast_message(pdf_slide[index])
-            index += 1
-            await asyncio.sleep(60)
+            self.index = self.index % len(pdf_slide)
+            await self.on_broadcast_message(pdf_slide[self.index])
+            self.index += 1
+            await asyncio.sleep(30)
 
 
 async def download_pdf(app_folder_info, service):
