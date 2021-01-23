@@ -1,5 +1,6 @@
 *.pickle
 *.json
+archive/
 *.old
 tmp/
 .vscode/

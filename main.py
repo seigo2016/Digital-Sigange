@@ -4,27 +4,30 @@ from aiohttp import web
 import aiohttp_jinja2
 import jinja2
 import asyncio
-import copy
 
 import itertools
-import os.path
+import os
+from os.path import join, dirname
 import pickle
 from io import StringIO, FileIO
 import json
-from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
-from google.auth.transport.requests import Request
-from googleapiclient.http import MediaIoBaseDownload
 import nest_asyncio
 import base64
+import dropbox
 import shutil
+from dotenv import load_dotenv
+
+load_dotenv(verbose=True)
+dotenv_path = join(dirname(__file__), ".env")
+load_dotenv(dotenv_path)
+ACCESS_TOKEN = os.environ.get("ACCESS_TOKEN")
 
 nest_asyncio.apply()
 routes = web.RouteTableDef()
 
 pdf_slide = []
-
 connected_client = 0
+
 class CustomNamespace(socketio.AsyncNamespace):
     async def on_connect(self, sid, environ):
         global connected_client
@@ -54,69 +57,37 @@ class CustomNamespace(socketio.AsyncNamespace):
             await asyncio.sleep(30)
 
 
-async def download_pdf(app_folder_info, service):
-    """
-    5分間隔でPDFをGoogle Driveからダウンロードし，base64エンコードしたものを配列に格納する
-
-    Parameters
-    ----------
-    app_folder_info : dict
-        対象のGoogle DriveのフォルダーのID/名前
-    
-    service : any
-
-    """
+async def download_pdf(dbx):
     global pdf_slide
-    files = []
     prev_files = []
     while True:
-        folder_id = app_folder_info["id"]
-        query = f"'{folder_id}' in parents and mimeType='application/pdf' and trashed = false"
-        results = service.files().list(
-            pageSize=100,
-            fields='nextPageToken, files(id, name)',
-            q=query
-            ).execute()
-        files = results.get('files', [])
-        if not files:
-            print("No file found")
+        files=[]
+        res = dbx.files_list_folder('')
+        for entry in res.entries:
+            if entry.path_lower.endswith(".pdf"):
+                files.append(entry.path_display)
+        
+        if len(files) == 0:
             prev_files = []
             shutil.rmtree("./tmp/")
             os.mkdir("./tmp/")
-        if files:
-            print("Found new File")
-            old_files = []
-            new_files = []
-            if prev_files:
-                file_ids = set([i["id"] for i in files])
-                prev_file_ids = set([i["id"] for i in prev_files])
-                new_file_ids = file_ids - prev_file_ids
-                old_file_ids = prev_file_ids - file_ids
-                for nf in new_file_ids:
-                    new_files.append(next((f for f in files if f["id"] == nf), None))
-                for of in old_file_ids:
-                    old_files.append(next((f for f in prev_files if f["id"] == of), None))
-            else:
-                new_files = copy.deepcopy(files) 
-            for f in new_files:
-                request = service.files().get_media(fileId=f['id'])
-                fh = FileIO('./tmp/' + f['name'], mode='w')
-                downloader = MediaIoBaseDownload(fh, request)
-                done = False
-                while not done:
-                    _, done = downloader.next_chunk()
-                print("Download Copmlete")
-            for f in old_files:
-                fname = f["name"]
-                os.remove(f"./tmp/{fname}")
+            with open(f"./default.pdf", "rb") as f:
+                pdf_slide = [base64.b64encode(f.read())]
+        else:
+            remove_queue = set(prev_files) - set(files)
+            download_queue = set(files) - set(prev_files)
+            tmp_path = join(dirname(__file__), "tmp")
+            for f in download_queue:
+                dbx.files_download_to_file(tmp_path + f, f)
+
+            for f in remove_queue:
+                os.remove(tmp_path + f)  
             prev_files = files
-            pdf_slide = []
-            for f in files:
-                file_name = f["name"]
+            pdf_slide=[]
+            for file_name in files:
                 with open(f"./tmp/{file_name}", "rb") as f:
                     pdf_slide.append(base64.b64encode(f.read()))
-            print("All Slide Updated")
-        await asyncio.sleep(300)
+        await asyncio.sleep(10)
 
 
 @aiohttp_jinja2.template('index.html')
@@ -124,43 +95,10 @@ def index(request):
     return {'': ''}
 
 
-def connect_drive():
-    """
-    認証した後に，Google Driveに接続，情報を取得。
-    """
-    creds = None
-    SCOPES = ["https://www.googleapis.com/auth/drive.metadata", "https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive.readonly"]
-    if os.path.exists('token.pickle'):
-        with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
+def connect_dropbox():
+    dbx = dropbox.Dropbox(ACCESS_TOKEN)
+    return dbx
 
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('client_secret.json', SCOPES)
-            creds = flow.run_local_server(port=8080)
-        with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-
-    service = build('drive', 'v3', credentials=creds)
-    app_folder_info = None
-    if not os.path.exists('folder.json'):
-        file_metadata = {
-            'name': 'Digital-Signage',
-            'mimeType': 'application/vnd.google-apps.folder'
-        }
-        app_folder = service.files().create(body=file_metadata, fields='id').execute()
-        app_folder_id = app_folder.get('id')
-        app_folder_info = {"name": "Digital-Signage", "id": app_folder_id}
-        with open('folder.json', 'w') as f:
-            json.dump(app_folder_info, f, indent=4)
-    else:
-        with open('folder.json') as f:
-            app_folder_info = json.load(f)
-    print("Connected")
-    return app_folder_info, service
-        
 
 async def start_web():
     sio = socketio.AsyncServer(cors_allowed_origins='*', async_mode='aiohttp')
@@ -171,10 +109,11 @@ async def start_web():
     sio.attach(app)
     web.run_app(app, handle_signals=False)
 
+
 async def start():
-    app_folder_info, service = connect_drive()
+    dbx = connect_dropbox()
     loop = asyncio.get_event_loop()
-    loop.run_until_complete(await asyncio.gather(download_pdf(app_folder_info, service), start_web()))
+    loop.run_until_complete(await asyncio.gather(download_pdf(dbx), start_web()))
 
 if __name__ == '__main__':
     asyncio.run(start())

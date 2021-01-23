@@ -2,12 +2,13 @@
 ## Overview
 Disig is a simple digital signage server on the Raspberry Pi.  
 
+
 ## Description
 Disig consists of two parts;server side program and client side program, which are connect with each other via socket.io.  
 
 ### Server side program
 It's written by Python3.
-Main roles are to get PDF file from Google Drive and to run the server that provides pdf data to clients.  
+Main roles are to get PDF file from Dropbox and to run the server that provides pdf data to clients.  
 This program was tested on Raspberry Pi OS 64bit and Python3.7.3.  
 
 
